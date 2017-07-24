@@ -49,20 +49,16 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace org.m2sf.m2sharp
-{
+namespace org.m2sf.m2sharp {
 
-    public class TokenSet //: ITokenSet
-    {
+public class TokenSet : ITokenSet {
 
-        /* Lexeme Table */
-        public static string[] lexemeTable = {
+    /* Lexeme Table */
+  public static string[] lexemeTable = {
   /* Null Token */
-  
   "UNKNOWN",
   
   /* Reserved Words */
-
   "AND", 
   "ARGLIST",
   "ARRAY", 
@@ -152,157 +148,174 @@ namespace org.m2sf.m2sharp
   "LEFT-BRACE",
   "RIGHT-BRACE",
   "END-OF-FILE"
+  }; /* end m2c_token_name_table */
+    
+  private static readonly int segmentCount = 
+    (Enum.GetNames(typeof(Token)).Length / 32) + 1;
 
-}; /* end m2c_token_name_table */
+  public struct TokenSetBits
+  {
+    public uint[] segments;
+    public uint elemCount;
+  } /* end struct */
 
-        private static readonly int segmentCount = (Enum.GetNames(typeof(Token)).Length / 32) + 1;
+  TokenSetBits dataStored;
 
-        public struct TokenSetBits
-        {
-            public uint[] segments;
-            public uint elemCount;
-        } /* end struct */
+/* ---------------------------------------------------------------------------
+ * private constructor TokenSet ()
+ * ---------------------------------------------------------------------------
+ * Prevents clients from invoking the default constructor.
+ * Sets the length of dataStored.segments.
+ * ------------------------------------------------------------------------ */
 
-        TokenSetBits dataStored;
-
-        /* ---------------------------------------------------------------------------
-         * private constructor TokenSet ()
-         * ---------------------------------------------------------------------------
-         * Prevents clients from invoking the default constructor.
-         * Sets the length of dataStored.segments.
-         * ------------------------------------------------------------------------ */
-
-        private TokenSet()
-        {
-            this.dataStored.segments = new uint[segmentCount];
-        } /* end TokenSet */
+  private TokenSet();
+  /* end TokenSet */
 
 
 
-        /* --------------------------------------------------------------------------
-         * constructor newFromRawData( bits95to64, bits63to32, bits31to0, counter )
-         * --------------------------------------------------------------------------
-         * Returns a newly allocated tokenset object from raw data passed in as
-         * three data segments of 32 bits from highest to lowest, followed by a bit
-         * counter. Returns null if the input data is inconsistent.
-         * ----------------------------------------------------------------------- */
+/* --------------------------------------------------------------------------
+ * constructor newFromRawData( bits95to64, bits63to32, bits31to0, counter )
+ * --------------------------------------------------------------------------
+ * Returns a newly allocated tokenset object from raw data passed in as
+ * three data segments of 32 bits from highest to lowest, followed by a bit
+ * counter. Returns null if the input data is inconsistent.
+ * ----------------------------------------------------------------------- */
 
-        public static TokenSet newFromRawData(params uint[] args) {
-            TokenSet newSet = new TokenSet();           
-            uint counter = 0;
+  public static TokenSet newFromRawData(params uint[] args) {
+    TokenSet newSet = new TokenSet();
 
-            if(args.Length != segmentCount + 1) {
-                return null;
-            } /* end if */
+    /* allocate new set */
+    newSet.dataStored.segments = new uint[segmentCount];
 
-            if(args[segmentCount] > segmentCount * 32) {
-                return null;
-            } /* end if */
+    /* initialise */
+    uint counter = 0;
 
-            for (int segmentIndex = args.Length - 2; segmentIndex >= 0; segmentIndex--) {
+    /* check against invalid input */
+    if (args.Length != segmentCount + 1) {
+      return null;
+    } /* end if */
 
-                for (int bitIndex = 0; bitIndex < 32; bitIndex++) {
+    if (args[segmentCount] > segmentCount * 32) {
+      return null;
+    } /* end if */
 
-                    if ((args[segmentIndex] & (1 << bitIndex)) == (1 << bitIndex))
-                        counter++;
-                } /* end for */
+    /* count elements */
+    for (int segmentIndex = args.Length - 2; 
+      segmentIndex >= 0; segmentIndex--) {
 
-                newSet.dataStored.segments[segmentIndex] = args[segmentIndex];
-            } /* end for */
+      for (int bitIndex = 0; bitIndex < 32; bitIndex++) {
 
-            if (counter != args[segmentCount]) {
-                return null;
-            } /* end if */
+        if ((args[segmentIndex] & (1 << bitIndex)) == (1 << bitIndex))
+          counter++;
+      } /* end for */
 
-            newSet.dataStored.elemCount = args[segmentCount];
+        newSet.dataStored.segments[segmentIndex] = args[segmentIndex];
+    } /* end for */
 
-            return newSet;
-        } /* end newFromData */
+    /* check against inconsistent counter */
+    if (counter != args[segmentCount]) {
+      return null;
+    } /* end if */
 
-        /* --------------------------------------------------------------------------
-         * constructor newFromList(token, ...)
-         * --------------------------------------------------------------------------
-         * Returns a newly allocated tokenset object that includes the tokens passed
-         * as arguments of a variadic argument list.
-         * ----------------------------------------------------------------------- */
+    /* update element counter */
+    newSet.dataStored.elemCount = args[segmentCount];
 
-        public static TokenSet newFromList(params Token[] tokenList)
-        {
-            TokenSet newSet = new TokenSet();
-            uint bit, segmentIndex;
-            Token token;
+    return newSet;
+  } /* end newFromData */
 
-            /* allocate new set */
-            newSet.dataStored.segments = new uint[segmentCount];
+/* --------------------------------------------------------------------------
+ * constructor newFromList(token, ...)
+ * --------------------------------------------------------------------------
+ * Returns a newly allocated tokenset object that includes the tokens passed
+ * as arguments of a variadic argument list.
+ * ----------------------------------------------------------------------- */
 
-            /* initialise */
-            for (segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++)
-            {
-                newSet.dataStored.segments[segmentIndex] = 0;
-            } /* end For */
+  public static TokenSet newFromList(params Token[] tokenList) {
+    TokenSet newSet = new TokenSet();
+    uint bit, segmentIndex;
+    Token token;
+    
+    /* allocate new set */
+    newSet.dataStored.segments = new uint[segmentCount];
+    
+    /* initialise */
+    for (segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
+      newSet.dataStored.segments[segmentIndex] = 0;
+    } /* end For */
 
-            /* store tokens from list */
-            token = tokenList[0];
-            for (int i = 1; token != Token.Unknown; i++)
-            {
+    /* store tokens from list */
+    token = tokenList[0];
+    for (int i = 1; token != Token.Unknown; i++) {
 
-                if (token <= Token.EndOfFile)
-                {
-                    segmentIndex = (uint)token / 32;
-                    bit = (uint)token % 32;
-                    newSet.dataStored.segments[segmentIndex] = (newSet.dataStored.segments[segmentIndex] | (uint)(1 << (int)bit));
-                } /* end if */
+      if (token <= Token.EndOfFile)
+      {
+        segmentIndex = (uint)token / 32;
+        bit = (uint)token % 32;
+        newSet.dataStored.segments[segmentIndex] =
+          (newSet.dataStored.segments[segmentIndex] | (uint)(1 << (int)bit));
+      } /* end if */
 
-                /* get next token in list */
-                token = tokenList[i];
-            } /* end while */
+      /* get next token in list */
+      token = tokenList[i];
+    } /* end while */
 
-            /* update element counter */
-            newSet.dataStored.elemCount = CountBits(newSet);
+    /* update element counter */
+    newSet.dataStored.elemCount = CountBits(newSet);
 
-            return newSet;
-        } /* end newFromList */
+    return newSet;
+  } /* end newFromList */
 
 
-        /* --------------------------------------------------------------------------
-         * constructor newFromUnion(set, ...)
-         * --------------------------------------------------------------------------
-         * Returns a newly allocated tokenset object that represents the set union of
-         * the tokensets passed as arguments of a non-empty variadic argument list.
-         * ----------------------------------------------------------------------- */
+/* --------------------------------------------------------------------------
+ * constructor newFromUnion(set, ...)
+ * --------------------------------------------------------------------------
+ * Returns a newly allocated tokenset object that represents the set union of
+ * the tokensets passed as arguments of a non-empty variadic argument list.
+ * ----------------------------------------------------------------------- */
 
-        public static TokenSet newFromUnion(params TokenSet[] setList)
-        {
-            uint segmentIndex;
-            TokenSet set,
-                newSet;
+  public static TokenSet newFromUnion(params TokenSet[] setList)
+  {
+    uint segmentIndex;
+    TokenSet set,
+      newSet = new TokenSet();
 
-            /* initialise */
-            segmentIndex = 0;
-            newSet = setList[0];
+    /* allocate new set */
+    newSet.dataStored.segments = new uint[segmentCount];
 
-            /* calculate union with each set in list */
-            for (int i = 1; i < setList.Length; i++)
-            {
-              set = setList[i];
-                /* for each segment ... */
-                while (segmentIndex < segmentCount)
-                {
-                    /* ... store union of corresponding segments */
-                    newSet.dataStored.segments[segmentIndex] =
-                        newSet.dataStored.segments[segmentIndex] | set.dataStored.segments[segmentIndex];
+    /* initialise */
+    for (segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++)
+    {
+      newSet.dataStored.segments[segmentIndex] = 0;
+    } /* end for */
 
-                    /* next segment */
-                    segmentIndex++;
-                } /* end while */
+    set = setList[0];
+    /* calculate union with each set in list */
+    for (int i = 0; set != null; i++) {
 
-            } /* end for */
+      /* for each segment ... */
+      while (segmentIndex < segmentCount) {
+            
+        /* ... store union of corresponding segments */
+        newSet.dataStored.segments[segmentIndex] =
+          newSet.dataStored.segments[segmentIndex] 
+          | newSet.dataStored.segments[segmentIndex];
 
-            /* update element counter */
-            newSet.dataStored.elemCount = CountBits(newSet);
+        /* next segment */
+        segmentIndex++;
+      } /* end while */
 
-            return newSet;
-        } /* end newFromUnion
+      /*get next set in list */
+      if (i < setList.Length)
+        set = setList[i];
+      else
+        set = null;
+    } /* end for */
+
+    /* update element counter */
+    newSet.dataStored.elemCount = CountBits(newSet);
+
+    return newSet;
+  } /* end newFromUnion
 
 /* --------------------------------------------------------------------------
  * method Count()
@@ -310,304 +323,315 @@ namespace org.m2sf.m2sharp
  * Returns the number of elements in the receiver.
  * ----------------------------------------------------------------------- */
 
-        public uint Count()
-        {
+  public uint Count() {
+    return this.dataStored.elemCount;
+  } /* end IsElement */
 
-            return this.dataStored.elemCount;
-        } /* end IsElement */
 
+/* --------------------------------------------------------------------------
+ * method IsElement(token)
+ * --------------------------------------------------------------------------
+ * Returns true if token is an element of the receiver, else false.
+ * ----------------------------------------------------------------------- */
 
-        /* --------------------------------------------------------------------------
-         * method IsElement(token)
-         * --------------------------------------------------------------------------
-         * Returns true if token is an element of the receiver, else false.
-         * ----------------------------------------------------------------------- */
+  public bool IsElement(Token token) {
+    int segmentIndex, bit;
 
-        public bool IsElement(Token token)
-        {
-            int segmentIndex, bit;
+    /* checks against invalid input */
+    if (token > Token.EndOfFile || token < 0) {
+      return false;
+    } /* end if */
 
-            if (token > Token.EndOfFile)
-            {
-                return false;
-            } /* end if */
+    /* calculates the bit and segment index of token */
+    segmentIndex = (int)token / 32;
+    bit = (int)token % 32;
 
-            segmentIndex = (int)token / 32;
-            bit = (int)token % 32;
+    /* checks these values against dataStored.segments */
+    return (this.dataStored.segments[segmentIndex] & (1 << bit)) != 0;
+  } /* end IsElement */
 
-            return (this.dataStored.segments[segmentIndex] & (1 << bit)) != 0;
-        } /* end IsElement */
 
+/* --------------------------------------------------------------------------
+ * method IsSubset(set)
+ * --------------------------------------------------------------------------
+ * Returns true if each element in set is also in the receiver, else false.
+ * ----------------------------------------------------------------------- */
 
-        /* --------------------------------------------------------------------------
-         * method IsSubset(set)
-         * --------------------------------------------------------------------------
-         * Returns true if each element in set is also in the receiver, else false.
-         * ----------------------------------------------------------------------- */
+  public bool IsSubset(TokenSet set) {
 
-        public bool IsSubset(TokenSet set)
-        {
+    /* steps through each segment */
+    for (uint segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++){
 
-            for (uint segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++)
-            {
+      /* checks if a segment is a subset of the reciever's same segment */
+      if (((set.dataStored.segments[segmentIndex] 
+        & this.dataStored.segments[segmentIndex]
+        ^ this.dataStored.segments[segmentIndex]) != 0)) {
 
-                if (((set.dataStored.segments[segmentIndex] & this.dataStored.segments[segmentIndex])
-                    ^ this.dataStored.segments[segmentIndex]) != 0)
-                {
+        return false;
 
-                    return false;
+      } /* end if */
+    } /* end for */
 
-                } /* end if */
+    return true;
 
-            } /* end for */
+  } /* end IsSubset */
 
-            return true;
 
-        } /* end IsSubset */
+/* --------------------------------------------------------------------------
+ * method IsDisjunct(set)
+ * --------------------------------------------------------------------------
+ * Returns true if set has no common elements with the receiver, else false.
+ * ----------------------------------------------------------------------- */
 
+  public bool IsDisjunct(TokenSet set) {
 
-        /* --------------------------------------------------------------------------
-         * method IsDisjunct(set)
-         * --------------------------------------------------------------------------
-         * Returns true if set has no common elements with the receiver, else false.
-         * ----------------------------------------------------------------------- */
+    /* steps through each segment */
+    for (uint segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++){
 
-        public bool IsDisjunct(TokenSet set)
-        {
+      /* checks if the corresponding  segments of two sets are disjunct */
+      if ((set.dataStored.segments[segmentIndex] 
+        & this.dataStored.segments[segmentIndex]) != 0) {
 
-            for (uint segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++)
-            {
+        return false;
+      } /* end if */
+    } /* end for */
 
-                if ((set.dataStored.segments[segmentIndex] & this.dataStored.segments[segmentIndex]) != 0)
-                {
+    return true;
+  } /* end IsDisjunct */
 
-                    return false;
+/* --------------------------------------------------------------------------
+ * method ElementList()
+ * --------------------------------------------------------------------------
+ * Returns a token list of all elements in the receiver.
+ * ----------------------------------------------------------------------- */
 
-                } /* end if */
+  public List<Token> ElementList()
+  {
+    List<Token> allElements = new List<Token>();
+    uint segmentIndex, count;
+    int bit;
+    Token token;
 
-            } /* end for */
+    /* check against empty sets */
+    if (this.dataStored.elemCount == 0) {
+      return null;
+    } /* end if */
 
-            return true;
+    /* initialise */
+    token = 0;
+    count = 0;
 
-        } /* end IsDisjunct */
+    /* step through all possible tokens */
+    while ((count <= this.dataStored.elemCount) 
+      && (token <= Token.EndOfFile)) {
+
+      /* get underlying data */
+      segmentIndex = (uint)token / 32;
+      bit = (int)token % 32;
+
+      /* check if the current token is in the receiver */
+      if (((this.dataStored.segments[segmentIndex]) 
+        & (1 << (int)bit)) != 0) {
 
-        /* --------------------------------------------------------------------------
-         * method ElementList()
-         * --------------------------------------------------------------------------
-         * Returns a token list of all elements in the receiver.
-         * ----------------------------------------------------------------------- */
-        //TODO
+        /* adds token to the return list */
+        allElements.Add(token);
+        count++;
+      } /* end if */
+
+      token++;
+    } /* end while */
+
+    return allElements;
+  } /* end ElementList */
+
+
+/* --------------------------------------------------------------------------
+ * method PrintSet(label)
+ * --------------------------------------------------------------------------
+ * Prints a human readable representation of the receiver.
+ * Format: label = { comma-separated list of tokens };
+ * ----------------------------------------------------------------------- */
 
-        public List<Token> ElementList()
-        {
-            List<Token> allElements = new List<Token>();
-            uint segmentIndex, count;
-            int bit;
-            Token token;
+  public void PrintSet(string label) {
+    uint segmentIndex, count;
+    int bit;
+    Token token;
+
+    Console.Write(label + " = {");
+
+    /* check against an empty set */
+    if (this.dataStored.elemCount == 0) {
+      Console.Write(" ");
+    } /* end if */
 
-            if (this.dataStored.elemCount == 0)
-            {
-                return null;
-            } /* end if */
+    /* initialise */
+    token = 0;
+    count = 0;
+
+    /* step through all possible tokens */
+    while ((count <= this.dataStored.elemCount) 
+      && (token <= Token.EndOfFile)) {
 
-            token = 0;
-            count = 0;
-
-            while ((count <= this.dataStored.elemCount) && (token <= Token.EndOfFile))
-            {
-                segmentIndex = (uint)token / 32;
-                bit = (int)token % 32;
-
-                if (((this.dataStored.segments[segmentIndex]) & (1 << (int)bit)) != 0)
-                {
-                    count++;
-                    allElements.Add(token);
-                } /* end if */
-                token++;
-            } /* end while */
-
-            return allElements;
-
-        } /* end ElementList */
-
-
-        /* --------------------------------------------------------------------------
-         * method PrintSet(label)
-         * --------------------------------------------------------------------------
-         * Prints a human readable representation of the receiver.
-         * Format: label = { comma-separated list of tokens };
-         * ----------------------------------------------------------------------- */
-
-        public void PrintSet(string label)
-        {
-            uint segmentIndex, count;
-            int bit;
-            Token token;
-
-            Console.Write(label + " = {");
-            if (this.dataStored.elemCount == 0)
-            {
-                Console.Write(" ");
-            } /* end if */
-
-            token = 0;
-            count = 0;
-
-            while ((count <= this.dataStored.elemCount) && (token <= Token.EndOfFile))
-            {
-                segmentIndex = (uint)token / 32;
-                bit = (int)token % 32;
-
-                if (((this.dataStored.segments[segmentIndex]) & (1 << (int)bit)) != 0)
-                {
-                    count++;
-
-                    if (count <= this.dataStored.elemCount)
-                    {
-
-                        Console.Write("\n {0},", lexemeTable[(uint)token]);
-                    }
-                    else
-                    {
-                        Console.WriteLine("\n {0}", lexemeTable[(uint)token]);
-                    } /* end if */
-                } /* end if */
-                token++;
-            } /* end while */
-
-            Console.WriteLine("};");
-        } /* end PrintSet */
-
-
-        /* --------------------------------------------------------------------------
-         * method PrintList()
-         * --------------------------------------------------------------------------
-         * Prints a human readable list of tokens in the receiver. 
-         * Format: first, second, third, ..., secondToLast or last
-         * ----------------------------------------------------------------------- */
-
-        public void PrintList()
-        {
-            uint bit, segmentIndex, count;
-            Token token;
-
-            if (this.dataStored.elemCount == 0)
-            {
-                Console.WriteLine("(nil)");
-            }
-
-            count = 0;
-            token = 0;
-            while ((count <= this.dataStored.elemCount) && (token <= Token.EndOfFile))
-            {
-                segmentIndex = (uint)token / 32;
-                bit = (uint)token % 32;
-
-                if (((this.dataStored.segments[segmentIndex] & (1 << (int)bit)) != 0))
-                {
-                    count++;
-                    if (count > 1)
-                    {
-                        if (count <= this.dataStored.elemCount)
-                        {
-                            Console.Write(", ");
-                        }
-                        else
-                        {
-                            Console.Write(" or ");
-                        } /* end if */
-                    } /* end if */
-
-                    Console.Write(lexemeTable[(uint)token]);
-                }
-                token++;
-            }
-
-            Console.WriteLine(".");
-        } /* end PrintList */
-
-
-        /* --------------------------------------------------------------------------
-         * method PrintLiteralStruct(ident)
-         * --------------------------------------------------------------------------
-         * Prints a struct definition for a tokenset literal for the receiver.
-         * Format: struct ident { uint s0; uint s1; uint s2; ...; uint n };
-         * ----------------------------------------------------------------------- */
-
-        public void PrintLiteralStruct(string ident)
-        {
-            uint segmentIndex;
-
-            Console.Write("struct {0} {{ uint s0", ident);
-
-            for (segmentIndex = 1; segmentIndex < segmentCount; segmentIndex++)
-            {
-                Console.Write("; s" + segmentIndex);
-            } /* end for */
-
-            Console.WriteLine("; n };");
-            Console.WriteLine("typedef struct {0} {0};", ident);
-
-        } /* end PrintLiteralStruct */
-
-
-        /* --------------------------------------------------------------------------
-         * method PrintLiteral()
-         * --------------------------------------------------------------------------
-         * Prints a sequence of hex values representing the bit pattern of receiver.
-         * Format: ( 0xHHHHHHHH, 0xHHHHHHHH, ..., count );
-         * ----------------------------------------------------------------------- */
-
-        public String PrintLiteral()
-        {
-            uint segmentIndex;
-            String returnVal;
-
-            returnVal = "( /* bits: */ 0x" + this.dataStored.segments[0].ToString("x08");
-            Console.Write("( /* bits: */ 0x" + this.dataStored.segments[0].ToString("x08"));
-
-            for (segmentIndex = 1; segmentIndex < segmentCount; segmentIndex++)
-            {
-                returnVal += ", 0x" + this.dataStored.segments[segmentIndex].ToString("x08");
-                Console.Write(", 0x" + this.dataStored.segments[segmentIndex].ToString("x08"));
-            } /* end for */
-
-            returnVal += ", /* counter: */ " + this.dataStored.elemCount + " );";
-            Console.WriteLine(", /* counter: */ " + this.dataStored.elemCount + " );");
-
-            return returnVal;
-        } /* end PrintLiteral */
-
-        /* --------------------------------------------------------------------------
-         * method CountBits()
-         * --------------------------------------------------------------------------
-         * Returns the number of set bits in set.
-         * ----------------------------------------------------------------------- */
-
-        static private uint CountBits(TokenSet set)
-        {
-            int bit;
-            uint segmentIndex,
-                bitCount = 0;
-
-            for (segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++)
-            {
-
-                for (bit = 0; bit < 32; bit++)
-                {
-
-                    if ((set.dataStored.segments[segmentIndex] & (1 << bit)) != 0)
-                    {
-                        bitCount++;
-                    } /* end if */
-
-                } /* end for */
-
-            } /* end for */
-
-            return bitCount;
-        } /* end CountBits */
-
-    } /* end TokenSet */
+      /* get underlying data */
+      segmentIndex = (uint)token / 32;
+      bit = (int)token % 32;
+
+      /* check if the current token is in the receiver */
+      if (((this.dataStored.segments[segmentIndex]) 
+        & (1 << (int)bit)) != 0) {
+
+        count++;
+
+        /* output the current token */
+        if (count <= this.dataStored.elemCount) {
+          Console.Write("\n {0},", lexemeTable[(uint)token]);
+        }
+        else {
+          Console.WriteLine("\n {0}", lexemeTable[(uint)token]);
+        } /* end if */
+      } /* end if */
+
+      token++;
+    } /* end while */
+
+    Console.WriteLine("};");
+  } /* end PrintSet */
+
+
+/* --------------------------------------------------------------------------
+ * method PrintList()
+ * --------------------------------------------------------------------------
+ * Prints a human readable list of tokens in the receiver. 
+ * Format: first, second, third, ..., secondToLast or last
+ * ----------------------------------------------------------------------- */
+
+  public void PrintList() {
+  uint bit, segmentIndex, count;
+  Token token;
+
+  /* check against null set */
+  if (this.dataStored.elemCount == 0) {
+    Console.WriteLine("(nil)");
+  }
+
+  /* initialise */
+  count = 0;
+  token = 0;
+
+  /* step through all possible tokens */
+  while ((count <= this.dataStored.elemCount) 
+    && (token <= Token.EndOfFile)) {
+
+    /* get underlying data */
+    segmentIndex = (uint)token / 32;
+    bit = (uint)token % 32;
+
+    /* check if the current token is in the receiver */
+    if (((this.dataStored.segments[segmentIndex] 
+      & (1 << (int)bit)) != 0)) {
+
+      count++;
+
+      /* generate output */
+      if (count > 1) {
+        if (count <= this.dataStored.elemCount) {
+          Console.Write(", ");
+        }
+        else {
+          Console.Write(" or ");
+        } /* end if */
+      } /* end if */
+      Console.Write(lexemeTable[(uint)token]);
+    }
+
+    token++;
+  }
+
+  Console.WriteLine(".");
+  } /* end PrintList */
+
+
+/* --------------------------------------------------------------------------
+ * method PrintLiteralStruct(ident)
+ * --------------------------------------------------------------------------
+ * Prints a struct definition for a tokenset literal for the receiver.
+ * Format: struct ident { uint s0; uint s1; uint s2; ...; uint n };
+ * ----------------------------------------------------------------------- */
+
+  public void PrintLiteralStruct(string ident) {
+    uint segmentIndex;
+
+    Console.Write("struct {0} {{ uint s0", ident);
+
+    /* loop segmentCount times */
+    for (segmentIndex = 1; segmentIndex < segmentCount; segmentIndex++) {
+      Console.Write("; s" + segmentIndex);
+    } /* end for */
+
+    Console.WriteLine("; n };");
+    Console.WriteLine("typedef struct {0} {0};", ident);
+
+  } /* end PrintLiteralStruct */
+
+
+/* --------------------------------------------------------------------------
+ * method PrintLiteral()
+ * --------------------------------------------------------------------------
+ * Prints a sequence of hex values representing the bit pattern of receiver.
+ * Format: ( 0xHHHHHHHH, 0xHHHHHHHH, ..., count );
+ * ----------------------------------------------------------------------- */
+
+  public String PrintLiteral() {
+
+    uint segmentIndex;
+    String returnVal;
+
+    /* add strings to returnVal */
+    returnVal = "( /* bits: */ 0x" 
+      + this.dataStored.segments[0].ToString("x08");
+
+    /* loop segmentCount times */
+    for (segmentIndex = 1; segmentIndex < segmentCount; segmentIndex++) {
+      returnVal += ", 0x" 
+        + this.dataStored.segments[segmentIndex].ToString("x08");
+    } /* end for */
+
+    returnVal += ", /* counter: */ " + this.dataStored.elemCount + " );";
+
+    /* print and return returnVal */
+    Console.Write(returnVal);
+    return returnVal;
+  } /* end PrintLiteral */
+
+
+/* --------------------------------------------------------------------------
+ * method CountBits()
+ * --------------------------------------------------------------------------
+ * Returns the number of set bits in set.
+ * ----------------------------------------------------------------------- */
+
+  static private uint CountBits(TokenSet set) {
+    int bit;
+    uint segmentIndex,
+        bitCount = 0;
+
+    /* step through each segement */
+    for (segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
+
+      /* count bits in the segment */
+      for (bit = 0; bit < 32; bit++) {
+
+        if ((set.dataStored.segments[segmentIndex] & (1 << bit)) != 0) {
+          bitCount++;
+        } /* end if */
+
+      } /* end for */
+
+    } /* end for */
+
+    return bitCount;
+  } /* end CountBits */
+
+} /* end TokenSet */
 
 } /* end namespace */
